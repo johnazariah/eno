@@ -6,6 +6,7 @@ import (
 
 	apiv1 "github.com/Azure/eno/api/v1"
 	"github.com/Azure/eno/internal/manager"
+	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -15,6 +16,19 @@ import (
 type watchdogController struct {
 	client    client.Client
 	threshold time.Duration
+}
+
+func (c *watchdogController) getInputsExist(comp *apiv1.Composition, ctx context.Context) bool {
+	logger := logr.FromContextOrDiscard(ctx).WithValues("checkForMissingInputs: synthesizer access", comp.Generation)
+
+	syn := &apiv1.Synthesizer{}
+	syn.Name = comp.Spec.Synthesizer.Name
+	err := c.client.Get(ctx, client.ObjectKeyFromObject(syn), syn)
+	if err != nil {
+		logger.WithValues("synthesizerName", syn.Name).Error(err, "failed to get synthesizer for composition. Synthesizer may not exist. Presuming inputs are not missing.")
+		return true
+	}
+	return comp.InputsExist(syn)
 }
 
 func NewController(mgr ctrl.Manager, threshold time.Duration) error {
@@ -35,11 +49,15 @@ func (c *watchdogController) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	var inputsMissing int
 	var pendingInit int
 	var pending int
 	var unready int
 	var terminal int
 	for _, comp := range list.Items {
+		if c.waitingOnInputs(&comp, ctx) {
+			inputsMissing++
+		}
 		if c.pendingInitialReconciliation(&comp) {
 			pendingInit++
 		}
@@ -54,12 +72,17 @@ func (c *watchdogController) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
+	waitingOnInputs.Set(float64(inputsMissing))
 	pendingInitialReconciliation.Set(float64(pendingInit))
 	stuckReconciling.Set(float64(pending))
 	pendingReadiness.Set(float64(unready))
 	terminalErrors.Set(float64(terminal))
 
 	return ctrl.Result{}, nil
+}
+
+func (c *watchdogController) waitingOnInputs(comp *apiv1.Composition, ctx context.Context) bool {
+	return !c.getInputsExist(comp, ctx) && time.Since(comp.CreationTimestamp.Time) > c.threshold
 }
 
 func (c *watchdogController) pendingInitialReconciliation(comp *apiv1.Composition) bool {

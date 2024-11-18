@@ -6,6 +6,13 @@ import (
 )
 
 var (
+	waitingOnInputs = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "eno_compositions_inputs_missing_total",
+			Help: "Number of compositions that are missing input resources",
+		},
+	)
+
 	pendingInitialReconciliation = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "eno_compositions_pending_initial_reconciliation",
@@ -36,5 +43,5 @@ var (
 )
 
 func init() {
-	metrics.Registry.MustRegister(pendingInitialReconciliation, stuckReconciling, pendingReadiness, terminalErrors)
+	metrics.Registry.MustRegister(waitingOnInputs, pendingInitialReconciliation, stuckReconciling, pendingReadiness, terminalErrors)
 }
