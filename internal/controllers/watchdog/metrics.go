@@ -13,6 +13,13 @@ var (
 		},
 	)
 
+	inputsNotInLockstep = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "eno_compositions_inputs_not_in_lockstep_total",
+			Help: "Number of compositions that have input resources that are not in lockstep with the composition's current state",
+		},
+	)
+
 	pendingInitialReconciliation = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "eno_compositions_pending_initial_reconciliation",

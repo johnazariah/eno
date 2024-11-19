@@ -36,6 +36,7 @@ func (c *watchdogController) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	var inputsMissing int
+	var notInLockstep int
 	var pendingInit int
 	var pending int
 	var unready int
@@ -43,6 +44,9 @@ func (c *watchdogController) Reconcile(ctx context.Context, req ctrl.Request) (c
 	for _, comp := range list.Items {
 		if c.waitingOnInputs(&comp, ctx) {
 			inputsMissing++
+		}
+		if c.notInLockstep(&comp, ctx) {
+			notInLockstep++
 		}
 		if c.pendingInitialReconciliation(&comp) {
 			pendingInit++
@@ -59,6 +63,7 @@ func (c *watchdogController) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	waitingOnInputs.Set(float64(inputsMissing))
+	inputsNotInLockstep.Set(float64(notInLockstep))
 	pendingInitialReconciliation.Set(float64(pendingInit))
 	stuckReconciling.Set(float64(pending))
 	pendingReadiness.Set(float64(unready))
@@ -80,8 +85,25 @@ func (c *watchdogController) getInputsExist(comp *apiv1.Composition, ctx context
 	return comp.InputsExist(syn)
 }
 
+func (c *watchdogController) getNotInLockstep(comp *apiv1.Composition, ctx context.Context) bool {
+	syn := &apiv1.Synthesizer{}
+	syn.Name = comp.Spec.Synthesizer.Name
+	err := c.client.Get(ctx, client.ObjectKeyFromObject(syn), syn)
+	if err != nil {
+		// Failed to get synthesizer for composition.
+		// Synthesizer may not exist.
+		// Presuming inputs are not missing.
+		return true
+	}
+	return comp.InputsOutOfLockstep(syn)
+}
+
 func (c *watchdogController) waitingOnInputs(comp *apiv1.Composition, ctx context.Context) bool {
 	return !c.getInputsExist(comp, ctx) && time.Since(comp.CreationTimestamp.Time) > c.threshold
+}
+
+func (c *watchdogController) notInLockstep(comp *apiv1.Composition, ctx context.Context) bool {
+	return c.getNotInLockstep(comp, ctx) && time.Since(comp.CreationTimestamp.Time) > c.threshold
 }
 
 func (c *watchdogController) pendingInitialReconciliation(comp *apiv1.Composition) bool {
