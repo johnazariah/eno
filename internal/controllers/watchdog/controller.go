@@ -72,7 +72,9 @@ func (c *watchdogController) getInputsExist(comp *apiv1.Composition, ctx context
 	syn.Name = comp.Spec.Synthesizer.Name
 	err := c.client.Get(ctx, client.ObjectKeyFromObject(syn), syn)
 	if err != nil {
-		//logger.WithValues("synthesizerName", syn.Name).Error(err, "failed to get synthesizer for composition. Synthesizer may not exist. Presuming inputs are not missing.")
+		// Failed to get synthesizer for composition.
+		// Synthesizer may not exist.
+		// Presuming inputs are not missing.
 		return true
 	}
 	return comp.InputsExist(syn)
